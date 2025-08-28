@@ -1,4 +1,4 @@
-// ignore_for_file: avoid_print
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -59,19 +59,15 @@ class CountdownAndRestartState extends State<CountdownAndRestart>
 
   final Duration _timer = const Duration(seconds: 10);
   CountdownStatus _status = CountdownStatus.idle;
-  Duration _elapsed = Duration.zero;
 
-  late DateTime _startTime;
   late Duration _remainingTime;
+  late Duration _elapsedTimeWhenPaused;
   late int _remainingTimeInSeconds;
 
   late final Ticker _ticker;
 
   void _start() {
     setState(() {
-      print('Starting');
-      print('_elapsed = $_elapsed');
-      _startTime = DateTime.now();
       _ticker.start();
       _status = CountdownStatus.counting;
     });
@@ -80,17 +76,15 @@ class CountdownAndRestartState extends State<CountdownAndRestart>
   void _pause() {
     if (!_status.isCounting) return;
     setState(() {
-      print('Pausing');
       _ticker.stop();
+      _elapsedTimeWhenPaused = _timer - _remainingTime;
       _status = CountdownStatus.paused;
     });
   }
 
   void _resume() {
     setState(() {
-      print('Resuming');
       if (_status.isCounting) return;
-      _startTime = DateTime.now().subtract(_elapsed);
       _ticker.start();
       _status = CountdownStatus.counting;
     });
@@ -98,17 +92,14 @@ class CountdownAndRestartState extends State<CountdownAndRestart>
 
   void _terminate() {
     setState(() {
-      print('Terminating');
       _ticker.stop();
-      _elapsed = Duration.zero;
       _remainingTime = _timer;
+      _elapsedTimeWhenPaused = Duration.zero;
       _status = CountdownStatus.terminated;
-      print('_elapsed = $_elapsed');
     });
   }
 
   void _playPause() {
-    print(_status);
     if (_status.isIdle) {
       _start();
     } else if (_status.isCounting) {
@@ -116,7 +107,6 @@ class CountdownAndRestartState extends State<CountdownAndRestart>
     } else if (_status.isPaused) {
       _resume();
     } else if (_status.isTerminated) {
-      print('Restarting');
       _start();
     }
   }
@@ -139,19 +129,17 @@ class CountdownAndRestartState extends State<CountdownAndRestart>
     super.initState();
 
     _remainingTime = _timer;
-    _remainingTimeInSeconds = _timer.inSeconds;
+    _elapsedTimeWhenPaused = Duration.zero;
+    _remainingTimeInSeconds = _remainingTime.inSeconds;
 
     _ticker = createTicker((elapsed) {
-      // print('Ticking');
+      _remainingTime = _timer - elapsed - _elapsedTimeWhenPaused;
+
       if (_remainingTime.isNegative) {
         _terminate();
         return;
       }
-
-      _elapsed = DateTime.now().difference(_startTime);
-      _remainingTime = _timer - _elapsed;
       if (_remainingTimeInSeconds != _remainingTime.inSeconds) {
-        print('$_remainingTimeInSeconds != ${_remainingTime.inSeconds}');
         setState(() {
           _remainingTimeInSeconds = _remainingTime.inSeconds;
         });
@@ -168,20 +156,24 @@ class CountdownAndRestartState extends State<CountdownAndRestart>
 
   @override
   Widget build(BuildContext context) {
-    print('Building');
+    final double beginValue = min(
+      (_remainingTimeInSeconds + 1) / _timer.inSeconds,
+      1,
+    );
+    final double endValue = _remainingTimeInSeconds / _timer.inSeconds;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         FittedBox(
           child: Stack(
-            alignment: AlignmentGeometry.center,
+            alignment: Alignment.center,
             children: [
               Text(_remainingTimeInSeconds.toString()),
               TweenAnimationBuilder<double>(
                 duration: const Duration(seconds: 1),
-                tween: Tween<double>(
-                    begin: 1, end: _remainingTimeInSeconds / _timer.inSeconds),
+                tween: Tween<double>(begin: beginValue, end: endValue),
                 curve: Curves.easeOutCubic,
                 builder: (context, value, _) {
                   return CircularProgressIndicator(
