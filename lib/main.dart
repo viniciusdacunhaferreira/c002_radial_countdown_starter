@@ -1,4 +1,7 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 void main() {
   runApp(const MainApp());
@@ -31,6 +34,8 @@ class MainApp extends StatelessWidget {
 }
 
 /// Main demo UI (countdown + restart button)
+/// Uses a Ticker to ensure the countdown ring updates with the screen vsync
+/// Learn more: https://codewithandrea.com/articles/flutter-timer-vs-ticker/
 class CountdownAndRestart extends StatefulWidget {
   const CountdownAndRestart({super.key});
 
@@ -38,13 +43,47 @@ class CountdownAndRestart extends StatefulWidget {
   CountdownAndRestartState createState() => CountdownAndRestartState();
 }
 
-class CountdownAndRestartState extends State<CountdownAndRestart> {
+class CountdownAndRestartState extends State<CountdownAndRestart>
+    with SingleTickerProviderStateMixin {
   static const maxWidth = 300.0;
+  // countdown duration
+  static const timeoutInSeconds = 10;
+  // elapsed time
+  Duration _elapsed = Duration.zero;
+
+  // derived values
+  // remaining time (capped to 0 to avoid negative numbers)
+  int get _remainingTime => max(0, timeoutInSeconds - _elapsed.inSeconds);
+  // do the calculation in milliseconds for better precision
+  double get _countdownProgress =>
+      _elapsed.inMilliseconds / (1000 * timeoutInSeconds.toDouble());
+
+  late final Ticker _ticker;
 
   @override
   void initState() {
     super.initState();
-    // TODO: Implement
+    // create ticker
+    _ticker = createTicker((elapsed) {
+      setState(() => _elapsed = elapsed);
+      // after timeout, stop ticker to avoid unnecessary rebuilds
+      if (_elapsed.inSeconds >= timeoutInSeconds) {
+        _ticker.stop();
+      }
+    });
+    // and start it
+    _ticker.start();
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  void _restart() {
+    _ticker.stop();
+    _ticker.start();
   }
 
   @override
@@ -53,14 +92,13 @@ class CountdownAndRestartState extends State<CountdownAndRestart> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // TODO: Add countdown widget
-        const Text(
-          'Replace this Text widget with the custom countdown UI',
-          textAlign: TextAlign.center,
+        CountdownRenderer(
+          progress: _countdownProgress,
+          remainingTime: _remainingTime,
         ),
         const SizedBox(height: 32),
         ElevatedButton(
-          onPressed: () {}, // TODO: Implement
+          onPressed: _restart,
           child: const Text(
             'Restart',
             style: TextStyle(fontSize: 32),
@@ -70,4 +108,167 @@ class CountdownAndRestartState extends State<CountdownAndRestart> {
       ],
     );
   }
+}
+
+class CountdownRenderer extends StatelessWidget {
+  const CountdownRenderer(
+      {super.key, required this.progress, required this.remainingTime});
+  final double progress;
+  final int remainingTime;
+
+  final color = Colors.deepPurple;
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 1.0,
+      child: Stack(
+        children: [
+          // * can be swapped with RingWithCustomPainter
+          RingWithoutCustomPainter(
+            progress: progress,
+            foregroundColor: color.shade700,
+            backgroundColor: color.shade400,
+          ),
+          Align(
+            alignment: Alignment.center,
+            child: RemainingTimeText(
+              remaining: remainingTime,
+              color: color.shade700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class RemainingTimeText extends StatelessWidget {
+  const RemainingTimeText(
+      {super.key, required this.remaining, required this.color});
+  final int remaining;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final width = constraints.maxWidth;
+      return Text(
+        remaining.toString(),
+        style: TextStyle(
+          fontSize: width / 3,
+          color: color,
+        ),
+      );
+    });
+  }
+}
+
+/// Simple ring implementation that uses a CircularProgressIndicator
+class RingWithoutCustomPainter extends StatelessWidget {
+  const RingWithoutCustomPainter({
+    super.key,
+    required this.progress,
+    required this.foregroundColor,
+    required this.backgroundColor,
+  });
+  final double progress;
+  final Color foregroundColor;
+  final Color backgroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final strokeWidth = constraints.maxWidth / 15.0;
+      return AspectRatio(
+        aspectRatio: 1.0,
+        child: Padding(
+          // Use padding to ensure we don't go beyond the constraints
+          padding: EdgeInsets.all(strokeWidth / 2.0),
+          child: Transform(
+            alignment: Alignment.center,
+            // Rotate 180 degrees to "flip" the animation horizontally
+            transform: Matrix4.rotationY(pi),
+            child: CircularProgressIndicator(
+              value: progress,
+              strokeWidth: strokeWidth,
+              valueColor: AlwaysStoppedAnimation<Color>(backgroundColor),
+              backgroundColor: foregroundColor,
+            ),
+          ),
+        ),
+      );
+    });
+  }
+}
+
+/// More advanced implementation that uses a custom painter
+class RingWithCustomPainter extends StatelessWidget {
+  const RingWithCustomPainter({
+    super.key,
+    required this.progress,
+    required this.foregroundColor,
+    required this.backgroundColor,
+  });
+  final double progress;
+  final Color foregroundColor;
+  final Color backgroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 1.0,
+      child: CustomPaint(
+        painter: RingPainter(
+          progress: progress,
+          foregroundColor: foregroundColor,
+          backgroundColor: backgroundColor,
+        ),
+      ),
+    );
+  }
+}
+
+// https://youtu.be/vvI_NUXK00s?si=jGhSGpt-j_JpcIsS
+// https://codewithandrea.com/videos/flutter-custom-painting-do-not-fear-canvas/
+class RingPainter extends CustomPainter {
+  RingPainter({
+    required this.progress,
+    required this.foregroundColor,
+    required this.backgroundColor,
+  });
+  final double progress;
+  final Color foregroundColor;
+  final Color backgroundColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final strokeWidth = size.width / 15.0;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - strokeWidth) / 2;
+
+    final backgroundPaint = Paint()
+      ..isAntiAlias = true
+      ..strokeWidth = strokeWidth
+      ..color = foregroundColor
+      ..style = PaintingStyle.stroke;
+    canvas.drawCircle(center, radius, backgroundPaint);
+
+    final foregroundPaint = Paint()
+      ..isAntiAlias = true
+      ..strokeWidth = strokeWidth
+      ..color = backgroundColor
+      ..style = PaintingStyle.stroke;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -pi / 2,
+      -2 * pi * progress,
+      false,
+      foregroundPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant RingPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }
