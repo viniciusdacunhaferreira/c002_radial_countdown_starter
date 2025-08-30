@@ -1,4 +1,3 @@
-// ignore_for_file: public_member_api_docs, sort_constructors_first
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -34,14 +33,6 @@ class MainApp extends StatelessWidget {
   }
 }
 
-/// Main demo UI (countdown + restart button)
-class CountdownAndRestart extends StatefulWidget {
-  const CountdownAndRestart({super.key});
-
-  @override
-  CountdownAndRestartState createState() => CountdownAndRestartState();
-}
-
 enum CountdownStatus {
   idle,
   counting,
@@ -52,6 +43,14 @@ enum CountdownStatus {
   bool get isCounting => this == counting;
   bool get isPaused => this == paused;
   bool get isTerminated => this == terminated;
+}
+
+/// Main demo UI (countdown + restart button)
+class CountdownAndRestart extends StatefulWidget {
+  const CountdownAndRestart({super.key});
+
+  @override
+  CountdownAndRestartState createState() => CountdownAndRestartState();
 }
 
 class CountdownAndRestartState extends State<CountdownAndRestart>
@@ -94,7 +93,6 @@ class CountdownAndRestartState extends State<CountdownAndRestart>
   void _terminate() {
     setState(() {
       _ticker.stop();
-      _remainingTime = _timer;
       _elapsedTimeWhenPaused = Duration.zero;
       _status = CountdownStatus.terminated;
     });
@@ -167,54 +165,106 @@ class CountdownAndRestartState extends State<CountdownAndRestart>
 
   @override
   Widget build(BuildContext context) {
-    const double radius = maxWidth / 2;
-    final double beginValue = min(
-      (_remainingTimeInSeconds + 1) / _timer.inSeconds,
-      1,
-    );
-    final double endValue = _remainingTimeInSeconds / _timer.inSeconds;
+    final double progress = _remainingTime.inSeconds / _timer.inSeconds;
+    final bool isRunning = _status.isCounting || _status.isPaused;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Stack(
-          alignment: Alignment.center,
+        Counter(remainingTime: _remainingTime, progressRatio: progress),
+        const SizedBox(height: 32),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            TweenAnimationBuilder(
-              duration: const Duration(seconds: 1),
-              tween: Tween<double>(begin: beginValue, end: endValue),
-              curve: Curves.easeOutCubic,
-              builder: (context, value, _) {
-                return CounterCircle(
-                  radius: radius,
-                  value: value,
-                  strokeWidth: 12,
-                );
-              },
-            ),
-            Text(
-              _remainingTimeInSeconds.toString(),
-              style: TextStyle(
-                fontSize: 100,
-                color: Theme.of(context).colorScheme.primary,
+            Expanded(
+              child: IconButton.filled(
+                icon: _buildPlayPauseIcon(),
+                onPressed: _playPause,
               ),
             ),
-            Visibility(
-              visible: _status.isCounting || _status.isPaused,
-              child: Positioned(
-                bottom: 45,
-                child: IconButton(
-                  onPressed: _stop,
+            Visibility(visible: isRunning, child: const SizedBox(width: 8)),
+            Expanded(
+              flex: isRunning ? 1 : 0,
+              child: Visibility(
+                visible: isRunning,
+                child: IconButton.filled(
                   icon: const Icon(Icons.stop),
+                  onPressed: _stop,
                 ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 32),
-        IconButton.filled(icon: _buildPlayPauseIcon(), onPressed: _playPause),
       ],
+    );
+  }
+}
+
+class Counter extends StatefulWidget {
+  const Counter({
+    super.key,
+    required this.remainingTime,
+    required this.progressRatio,
+  });
+
+  final Duration remainingTime;
+  final double progressRatio;
+
+  @override
+  State<Counter> createState() => _CounterState();
+}
+
+class _CounterState extends State<Counter> {
+  late double oldProgressRatio;
+
+  @override
+  void initState() {
+    oldProgressRatio = widget.progressRatio;
+
+    super.initState();
+  }
+
+  @override
+  void didUpdateWidget(covariant Counter oldWidget) {
+    if (oldWidget.progressRatio != widget.progressRatio) {
+      oldProgressRatio = oldWidget.progressRatio;
+    }
+
+    super.didUpdateWidget(oldWidget);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final remainingTimeInSeconds = widget.remainingTime.inSeconds;
+
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            TweenAnimationBuilder(
+              duration: const Duration(seconds: 1),
+              tween: Tween<double>(
+                begin: oldProgressRatio,
+                end: widget.progressRatio,
+              ),
+              curve: Curves.easeOutCubic,
+              builder: (_, value, __) {
+                return CounterCircle(value: value, strokeWidth: width / 25);
+              },
+            ),
+            Text(
+              remainingTimeInSeconds.toString(),
+              style: TextStyle(
+                fontSize: width / 3,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -222,14 +272,12 @@ class CountdownAndRestartState extends State<CountdownAndRestart>
 class CounterCircle extends StatelessWidget {
   const CounterCircle({
     super.key,
-    required this.radius,
     required this.value,
     this.strokeWidth = 1,
     this.valueColor,
     this.backgroundColor,
   });
 
-  final double radius;
   final double value;
   final double strokeWidth;
   final Color? valueColor;
@@ -237,79 +285,79 @@ class CounterCircle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color resolvedValueColor =
-        valueColor ?? Theme.of(context).colorScheme.primary;
-    Color resolvedBackgroundColor =
-        valueColor ?? Theme.of(context).colorScheme.primaryContainer;
-    final dim = 2 * radius;
+    final ColorScheme scheme = Theme.of(context).colorScheme;
 
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        CustomPaint(
-          size: Size(dim, dim),
-          painter: CirclePainter(
-            radius: radius,
-            value: 1,
-            strokeWidth: strokeWidth,
-            color: resolvedBackgroundColor,
-          ),
+    Color resolvedValueColor = valueColor ?? scheme.primary;
+    Color resolvedBackgroundColor = backgroundColor ?? scheme.primaryContainer;
+
+    return AspectRatio(
+      aspectRatio: 1.0,
+      child: CustomPaint(
+        painter: CirclePainter(
+          value: value,
+          strokeWidth: strokeWidth,
+          color: resolvedValueColor,
+          backgroundColor: resolvedBackgroundColor,
         ),
-        CustomPaint(
-          size: Size(dim, dim),
-          painter: CirclePainter(
-            radius: radius,
-            value: value,
-            strokeWidth: strokeWidth,
-            color: resolvedValueColor,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
 
 class CirclePainter extends CustomPainter {
   CirclePainter({
-    required this.radius,
     required this.value,
     required this.strokeWidth,
     required this.color,
+    required this.backgroundColor,
   });
 
-  final double radius;
   final double value;
   final double strokeWidth;
   final Color color;
-
-  double get sweepAngle => value * 2 * pi;
+  final Color backgroundColor;
 
   @override
   void paint(Canvas canvas, Size size) {
-    Paint paint = Paint();
-    paint.color = color;
-    paint.style = PaintingStyle.stroke;
-    paint.strokeWidth = strokeWidth;
-    paint.strokeCap = StrokeCap.round;
+    final nominalDiameter = size.shortestSide - strokeWidth;
+    final nominalRadius = nominalDiameter / 2;
 
-    final diameter = size.shortestSide - strokeWidth;
-    final Rect rect =
-        Offset(strokeWidth / 2, strokeWidth / 2) & Size(diameter, diameter);
+    Paint backgroundPaint = Paint()
+      ..color = backgroundColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+
+    canvas.drawCircle(
+      Offset(size.width / 2, size.height / 2),
+      nominalRadius,
+      backgroundPaint,
+    );
+
+    Paint progressPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    final rectOffset = Offset(strokeWidth / 2, strokeWidth / 2);
+    final rectSize = Size(nominalDiameter, nominalDiameter);
+    final Rect rect = rectOffset & rectSize;
     const double startAngle = 3 * pi / 2;
+    final double sweepAngle = value * 2 * pi;
 
     canvas.drawArc(
       rect,
       startAngle,
       sweepAngle,
       false,
-      paint,
+      progressPaint,
     );
   }
 
   @override
-  bool shouldRepaint(covariant CirclePainter oldDelegate) {
-    return oldDelegate.value != value ||
-        oldDelegate.color != color ||
-        oldDelegate.strokeWidth != strokeWidth;
-  }
+  bool shouldRepaint(covariant CirclePainter oldDelegate) =>
+      oldDelegate.value != value ||
+      oldDelegate.color != color ||
+      oldDelegate.backgroundColor != backgroundColor ||
+      oldDelegate.strokeWidth != strokeWidth;
 }
